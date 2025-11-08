@@ -1,0 +1,279 @@
+"""
+Casa Inteligente — Práctica 3 (POO en Python)
+================================================
+Archivo: Casa Inteligente.py
+
+Mejoras integradas manteniendo el nombre y la lógica base de la actividad.
+Se añadieron docstrings, type hints, validación de intensidad y logging.
+Se marcan con comentarios `# TODO(mejora): ...` los lugares con cambios clave.
+
+Requisitos que cumple este archivo:
+- Clase abstracta Dispositivo (ABC) con métodos abstractos encender, apagar, mostrar_datos.
+- Atributos privados en Dispositivo: __id_dispositivo, __estado.
+- Subclases: LuzInteligente (intensidad), CamaraSeguridad (grabando), SensorMovimiento (movimiento_detectado).
+- Sobrescritura de mostrar_datos() en cada subclase.
+- Composición: CasaInteligente con lista de dispositivos y métodos requeridos.
+- Simulación con ≥5 dispositivos y ejecución de escena (si hay movimiento → encender luces y activar cámara).
+"""
+
+from __future__ import annotations  #permite usar anotaciones de tipo cadenas
+from abc import ABC, abstractmethod   #clases abstractas
+from typing import List  #tipo de lista para las anotaciones
+import logging    #modulo para registrar mensajes
+
+# TODO(mejora): Se agregó configuración de logging para trazabilidad.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")  #nivel minimo de mensajes que se muestran y da el formato del mensaje
+logger = logging.getLogger(__name__)   #crea un logger especifico
+
+# Clase base abstracta para todos los dispositivos.
+# Define lo mínimo que cualquier dispositivo debe hacer
+class Dispositivo(ABC):
+    """Clase abstracta base para dispositivos de una casa inteligente.
+
+    Atributos privados:
+        __id_dispositivo (str): Identificador único del dispositivo.
+        __estado (bool): True si está encendido, False si está apagado.
+    """
+
+    def __init__(self, id_dispositivo: str) -> None:
+        """Guarda el ID y deja el dispositivo apagado por defecto."""
+        self.__id_dispositivo: str = id_dispositivo  # ID único del dispositivo
+        self.__estado: bool = False                  # Estado inicial: apagado
+
+    @abstractmethod
+    def encender(self) -> None:
+        """Obliga a las subclases a implementar cómo se encienden."""
+        # Nota: las subclases llaman a _set_estado(True)
+        ...
+
+    @abstractmethod
+    def apagar(self) -> None:
+        """Obliga a las subclases a implementar cómo se apagan."""
+        # Nota: las subclases llaman a _set_estado(False)
+        ...
+
+    @abstractmethod
+    def mostrar_datos(self) -> str:
+        """Cada subclase devuelve su propio texto de estado."""
+        ...
+
+    # --- Métodos de apoyo (encapsulamiento) ---
+    def get_id(self) -> str:
+        """Regresa el ID del dispositivo."""
+        return self.__id_dispositivo
+
+    def _set_estado(self, value: bool) -> None:
+        """Cambia el estado interno (uso por subclases)."""
+        self.__estado = value
+
+    def esta_encendido(self) -> bool:
+        """Devuelve True si el dispositivo está encendido."""
+        return self.__estado
+
+
+# Dispositivo concreto: una luz con intensidad 0–100%.
+class LuzInteligente(Dispositivo):
+    """Luz inteligente con control de intensidad (0–100%)."""
+
+    def __init__(self, id_dispositivo: str, intensidad: int = 100) -> None:
+        # Llama al constructor de la clase base para guardar el ID.
+        super().__init__(id_dispositivo)
+        self._intensidad: int = 0             # Valor por defecto
+        self.set_intensidad(intensidad)       # Valida y asigna la intensidad inicial
+
+    def encender(self) -> None:
+        # Cambia el estado a encendido y lo registra en el log.
+        self._set_estado(True)
+        logger.info(f"[Luz {self.get_id()}] Encendida a {self._intensidad}%")
+
+    def apagar(self) -> None:
+        # Cambia el estado a apagado y lo registra en el log.
+        self._set_estado(False)
+        logger.info(f"[Luz {self.get_id()}] Apagada")
+
+    def set_intensidad(self, valor: int) -> None:
+        """Fija la intensidad (debe estar entre 0 y 100)."""
+        # Valida que sea entero y esté en el rango permitido
+        if not isinstance(valor, int):
+            raise ValueError("La intensidad debe ser un entero (0–100).")
+        if not 0 <= valor <= 100:
+            raise ValueError("La intensidad debe estar en el rango 0–100.")
+        self._intensidad = valor
+        logger.info(f"[Luz {self.get_id()}] Intensidad fijada a {valor}%")
+
+    def get_intensidad(self) -> int:
+        """Devuelve la intensidad actual de la luz."""
+        return self._intensidad
+
+    def mostrar_datos(self) -> str:
+        # Arma un texto con el estado y la intensidad actual.
+        estado = "Encendida" if self.esta_encendido() else "Apagada"
+        return f"LuzInteligente(id={self.get_id()}, estado={estado}, intensidad={self._intensidad}%)"
+
+
+# Dispositivo concreto: una cámara que puede estar grabando o no.
+class CamaraSeguridad(Dispositivo):
+    """Cámara de seguridad con modo de grabación."""
+
+    def __init__(self, id_dispositivo: str) -> None:
+        super().__init__(id_dispositivo)
+        self._grabando: bool = False  # Por defecto, no está grabando
+
+    def encender(self) -> None:
+        # Enciende la cámara (no inicia grabación automáticamente).
+        self._set_estado(True)
+        logger.info(f"[Cámara {self.get_id()}] Encendida")
+
+    def apagar(self) -> None:
+        # Apaga la cámara y detiene la grabación si estaba activa.
+        self._set_estado(False)
+        if self._grabando:
+            self._grabando = False
+            logger.info(f"[Cámara {self.get_id()}] Grabación detenida por apagado")
+        logger.info(f"[Cámara {self.get_id()}] Apagada")
+
+    def iniciar_grabacion(self) -> None:
+        # Activa la grabación solo si la cámara está encendida.
+        if not self.esta_encendido():
+            logger.warning(f"[Cámara {self.get_id()}] No se puede grabar: cámara apagada")
+            return
+        self._grabando = True
+        logger.info(f"[Cámara {self.get_id()}] Grabando...")
+
+    def detener_grabacion(self) -> None:
+        # Detiene la grabación.
+        self._grabando = False
+        logger.info(f"[Cámara {self.get_id()}] Grabación detenida")
+
+    def esta_grabando(self) -> bool:
+        """True si la cámara está grabando."""
+        return self._grabando
+
+    def mostrar_datos(self) -> str:
+        # Arma un texto con el estado y si está grabando o no.
+        estado = "Encendida" if self.esta_encendido() else "Apagada"
+        return f"CamaraSeguridad(id={self.get_id()}, estado={estado}, grabando={self._grabando})"
+
+
+# Dispositivo concreto: sensor que detecta movimiento (True/False).
+class SensorMovimiento(Dispositivo):
+    """Sensor de movimiento con simulación de lectura."""
+
+    def __init__(self, id_dispositivo: str) -> None:
+        super().__init__(id_dispositivo)
+        self._movimiento_detectado: bool = False  # Sin movimiento por defecto
+
+    def encender(self) -> None:
+        # Enciende el sensor.
+        self._set_estado(True)
+        logger.info(f"[Sensor {self.get_id()}] Encendido")
+
+    def apagar(self) -> None:
+        # Apaga el sensor y reinicia la lectura a False.
+        self._set_estado(False)
+        self._movimiento_detectado = False
+        logger.info(f"[Sensor {self.get_id()}] Apagado")
+
+    def simular_lectura(self, valor: bool) -> None:
+        """Simula la lectura de movimiento (True = sí hay, False = no hay)."""
+        # Solo acepta actualización si el sensor está encendido.
+        if not self.esta_encendido():
+            logger.warning(f"[Sensor {self.get_id()}] No se actualiza: sensor apagado")
+            return
+        self._movimiento_detectado = bool(valor)
+        logger.info(f"[Sensor {self.get_id()}] Movimiento: {'Sí' if valor else 'No'}")
+
+    def hay_movimiento(self) -> bool:
+        """Devuelve True si se detecta movimiento."""
+        return self._movimiento_detectado
+
+    def mostrar_datos(self) -> str:
+        # Arma un texto con el estado y si detecta movimiento.
+        estado = "Encendido" if self.esta_encendido() else "Apagado"
+        return f"SensorMovimiento(id={self.get_id()}, estado={estado}, movimiento_detectado={self._movimiento_detectado})"
+
+
+# Clase que contiene y gestiona todos los dispositivos (composición).
+class CasaInteligente:
+    """Composición que gestiona una lista de dispositivos."""
+
+    def __init__(self) -> None:
+        # Lista interna donde guardamos los dispositivos agregados.
+        self._dispositivos: List[Dispositivo] = []
+
+    def agregar_dispositivo(self, d: Dispositivo) -> None:
+        """Agrega un dispositivo a la casa."""
+        self._dispositivos.append(d)
+        logger.info(f"[Casa] Dispositivo agregado: {d.get_id()} ({d.__class__.__name__})")
+
+    def mostrar_todos(self) -> str:
+        """Devuelve un texto con el estado de todos los dispositivos (uno por línea)."""
+        return "\n".join(d.mostrar_datos() for d in self._dispositivos)
+
+    def ejecutar_escena(self) -> list[str]:
+        """Si algún sensor detecta movimiento:
+        - Enciende todas las luces
+        - Enciende las cámaras y las pone a grabar
+        Devuelve una lista de acciones realizadas (útil para imprimir/guardar)."""
+        acciones: list[str] = []
+
+        # Revisa si hay al menos un sensor con movimiento.
+        hay_mov = any(
+            isinstance(d, SensorMovimiento) and d.hay_movimiento()
+            for d in self._dispositivos
+        )
+
+        if hay_mov:
+            logger.info("[Casa] Escena: movimiento detectado → encendiendo luces y cámaras")
+            for d in self._dispositivos:
+                if isinstance(d, LuzInteligente):
+                    if not d.esta_encendido():
+                        d.encender()
+                        acciones.append(f"Luz {d.get_id()} encendida")
+                elif isinstance(d, CamaraSeguridad):
+                    if not d.esta_encendido():
+                        d.encender()
+                        acciones.append(f"Cámara {d.get_id()} encendida")
+                    if not d.esta_grabando():
+                        d.iniciar_grabacion()
+                        acciones.append(f"Cámara {d.get_id()} grabando")
+        else:
+            logger.info("[Casa] Escena: sin movimiento → no se realizan acciones")
+
+        return acciones
+
+
+# --- Ejecución de ejemplo
+if __name__ == "__main__":
+    casa = CasaInteligente()
+
+    # Creamos ≥5 dispositivos de distintos tipos, la intensidad de la luz es fija
+    luz1 = LuzInteligente("L1", intensidad=80)
+    luz2 = LuzInteligente("L2", intensidad=30)
+    cam1 = CamaraSeguridad("C1")
+    sens1 = SensorMovimiento("S1")
+    sens2 = SensorMovimiento("S2")
+
+    # Los agregamos a la casa
+    for d in (luz1, luz2, cam1, sens1, sens2):
+        casa.agregar_dispositivo(d)
+
+    # Encendemos algunos y preparamos lectura de sensores
+    luz1.encender()
+    cam1.encender()
+    sens1.encender()
+    sens2.encender()
+
+    # Simulamos que un sensor detecta movimiento (dispara la escena)
+    sens2.simular_lectura(True)
+
+    # Ejecutamos la escena y mostramos las acciones realizadas
+    acciones = casa.ejecutar_escena()
+    if acciones:
+        print("[Acciones]")
+        for a in acciones:
+            print(" -", a)
+
+    # Finalmente mostramos el estado de todos los dispositivos
+    print("\n--- Estado actual ---")
+    print(casa.mostrar_todos())
